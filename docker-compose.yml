@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  api:
+    image: python:3.10-slim
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: bash -c "pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+    restart: unless-stopped
+
+  ui:
+    image: python:3.10-slim
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: bash -c "pip install -r requirements.txt && streamlit run ui/streamlit_app.py --server.port 8501 --server.address 0.0.0.0"
+    ports:
+      - "8501:8501"
+    environment:
+      - API_BASE_URL=http://api:8000
+    depends_on:
+      - api
+    restart: unless-stopped

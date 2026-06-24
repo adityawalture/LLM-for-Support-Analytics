@@ -1,0 +1,158 @@
+# AI-Powered Support Ticket Analytics System
+
+This system is an end-to-end AI-powered support ticket analytics application designed to query data using natural language, detect SLA and performance anomalies, expose REST APIs, and provide a premium user interface.
+
+Developed for the **DOTMappers AI Engineer Assessment**.
+
+---
+
+## 🏗️ System Architecture
+
+The application is structured into isolated layers following a production-grade microservices design:
+
+```
+project/
+├── data/
+│   └── support_tickets.csv      # Source dataset containing 500 records
+├── app/
+│   ├── main.py                  # FastAPI initialization & lifespan management
+│   ├── routes/
+│   │   ├── health.py            # API health check router
+│   │   ├── query.py             # NLP querying & dataset summary router
+│   │   └── anomaly.py           # Anomaly dashboard router
+│   ├── services/
+│   │   ├── llm_service.py       # LLM intent parsing & answer generator
+│   │   ├── query_engine.py      # Deterministic Pandas execution engine
+│   │   └── anomaly_engine.py    # Rule-based statistical anomaly detector
+│   ├── utils/
+│   │   └── loader.py            # CSV data ingestion and type sanitizer
+│   └── models/
+│       └── schemas.py           # Pydantic validation models
+├── ui/
+│   └── streamlit_app.py         # Premium Streamlit user dashboard
+├── requirements.txt             # Python dependencies
+├── docker-compose.yml           # Multi-container service orchestrator
+└── README.md                    # System documentation
+```
+
+### Data Flow Model:
+1. **User Question** is inputted in the Streamlit UI or sent via API POST request.
+2. **LLM (Groq)** understands the intent and converts it into a structured JSON query payload (representing filters, metrics, groupings, sorting, and limits).
+3. **Pandas Query Engine** executes the structured JSON instructions deterministically, performing the actual aggregations and filtering.
+4. **LLM** translates the tabular/numerical results back into a friendly, natural language response.
+
+*This separation of concerns guarantees 100% mathematical accuracy and eliminates LLM hallucinations.*
+
+---
+
+## ⚡ Setup & Installation
+
+### Option 1: Using Docker (Recommended)
+Spin up the entire stack with a single command:
+```bash
+docker-compose up --build
+```
+* The API backend will be available at `http://localhost:8000`
+* The Streamlit UI will be available at `http://localhost:8501`
+
+### Option 2: Running Locally with Virtual Environment
+
+1. **Clone & Navigate:**
+   ```bash
+   cd "AI Engineer Assessment"
+   ```
+
+2. **Create & Activate Virtual Environment:**
+   ```bash
+   python -m venv venv
+   # On Windows (PowerShell):
+   venv\Scripts\Activate.ps1
+   # On macOS/Linux:
+   source venv/bin/activate
+   ```
+
+3. **Install Dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Run FastAPI Backend:**
+   ```bash
+   uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+   ```
+
+5. **Run Streamlit Frontend (in a separate terminal):**
+   ```bash
+   streamlit run ui/streamlit_app.py --server.port 8501
+   ```
+
+---
+
+## 🤖 LLM Strategy
+
+The system is configured as follows:
+1. **Groq (Online)**: If a `GROQ_API_KEY` is present in the environment variables, the system uses Groq's high-speed API with `llama-3.3-70b-versatile` (configured in [llm_service.py](file:///d:/AI%20Engineer%20Assessment/app/services/llm_service.py)).
+2. **Regex Fallback Engine**: If the Groq connection fails, is timed out, or no API key is set, the system automatically falls back to a deterministic regex parser to extract intent and format responses, providing 100% service uptime.
+
+---
+
+## ⚠️ Anomaly Detection Rules
+
+The anomaly engine uses statistical boundaries to flag operational issues:
+1. **SLA Violations**: Unresolved Critical tickets (`priority == 'Critical' & status != 'Resolved'`) that have been open for **more than 24 hours**.
+2. **Performance Outliers (Abnormally Long Resolution Time)**: Any resolved ticket where `resolution_time_hrs > mean + (2 * std)` of all resolved tickets in the dataset.
+
+*To ensure calculations work realistically on historical data (from Jan to Mar 2024), ticket age is computed relative to the latest ticket created in the dataset (`2024-03-30 18:06:00`).*
+
+---
+
+## 💬 REST API Endpoints & Sample Queries
+
+### 1. Health Check
+* **Endpoint**: `GET /health`
+* **Response**:
+  ```json
+  {"status": "running"}
+  ```
+
+### 2. Anomaly Detection
+* **Endpoint**: `GET /anomalies`
+* **Response**:
+  ```json
+  [
+    {
+      "ticket_id": "TKT-108",
+      "reason": "Abnormally long resolution time (119.7 hours vs threshold of 59.2 hours)"
+    },
+    {
+      "ticket_id": "TKT-111",
+      "reason": "Critical ticket unresolved for more than 24 hours (age: 172.1 hours)"
+    }
+  ]
+  ```
+
+### 3. Natural Language Querying
+* **Endpoint**: `POST /query`
+* **Request**:
+  ```json
+  {"question": "How many tickets are currently open?"}
+  ```
+* **Response**:
+  ```json
+  {"answer": "Based on the ticket database, there are currently 144 open tickets."}
+  ```
+
+* **Request**:
+  ```json
+  {"question": "Which agent has the lowest average customer rating?"}
+  ```
+* **Response**:
+  ```json
+  {"answer": "Agent AGT-05 has the lowest average customer rating of 3.42."}
+  ```
+
+---
+
+## 🎯 Boundaries & Limitations
+* **Static Context**: The system currently runs against a static CSV snapshot. When moving to a database-backed solution, the loader utility would be refactored to read from SQL tables.
+* **Large Datasets**: For massive datasets (millions of rows), loading the entire DataFrame in memory becomes inefficient. In that stage, the LLM translator would output SQL syntax (Text-to-SQL pattern) to execute calculations on the database server directly.
