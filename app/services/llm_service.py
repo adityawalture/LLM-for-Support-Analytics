@@ -106,11 +106,10 @@ A: {
 }
 """
 
-def extract_query_intent_llm(question: str) -> Optional[StructuredQuery]:
+def extract_query_intent_llm(question: str) -> StructuredQuery:
     """Asks the LLM to translate a natural language query into a StructuredQuery."""
     if not client:
-        print("LLM client not initialized (missing GROQ_API_KEY). Using fallback parser.")
-        return None
+        raise RuntimeError("LLM client is not initialized because GROQ_API_KEY is missing from environment variables.")
     try:
         response = client.chat.completions.create(
             model=model_name,
@@ -133,77 +132,17 @@ def extract_query_intent_llm(question: str) -> Optional[StructuredQuery]:
         data = json.loads(content)
         return StructuredQuery(**data)
     except Exception as e:
-        print(f"LLM intent extraction failed: {e}")
-        return None
+        raise RuntimeError(f"LLM intent extraction failed: {str(e)}")
 
-def extract_query_intent_fallback(question: str) -> StructuredQuery:
-    """Fallback regex parser for common queries to ensure reliability without LLM connectivity."""
-    q = question.lower()
-    
-    # 1. "How many tickets are currently open?" / "How many open tickets exist?"
-    if "how many" in q and "open" in q:
-        return StructuredQuery(
-            metric="count",
-            filters=[FilterCondition(column="status", operator="==", value="Open")]
-        )
-        
-    # 2. "Which agent has the lowest average customer rating?"
-    if "agent" in q and "lowest" in q and "rating" in q:
-        return StructuredQuery(
-            metric="mean",
-            target_column="customer_rating",
-            group_by="agent_id",
-            sort="ascending",
-            limit=1
-        )
-        
-    # 3. "Which agent resolved the most tickets this month?"
-    if "agent" in q and ("most" in q or "highest" in q) and "resolved" in q:
-        return StructuredQuery(
-            metric="count",
-            filters=[
-                FilterCondition(column="status", operator="==", value="Resolved"),
-                FilterCondition(column="created_at", operator=">=", value="2024-03-01 00:00:00"),
-                FilterCondition(column="created_at", operator="<=", value="2024-03-31 23:59:59")
-            ],
-            group_by="agent_id",
-            sort="descending",
-            limit=1
-        )
-        
-    # 4. "What is the average customer rating for Technical category tickets?"
-    if "average" in q and "rating" in q and "technical" in q:
-        return StructuredQuery(
-            metric="mean",
-            target_column="customer_rating",
-            filters=[FilterCondition(column="category", operator="==", value="Technical")]
-        )
-        
-    # 5. "Show me all Critical tickets not resolved within 12 hours."
-    if "critical" in q and "not resolved" in q and "12" in q:
-        return StructuredQuery(
-            metric="list",
-            filters=[
-                FilterCondition(column="priority", operator="==", value="Critical"),
-                FilterCondition(column="resolution_time_hrs", operator=">", value=12.0)
-            ]
-        )
-
-    # Generic fallback: return everything as a list
-    return StructuredQuery(metric="list", filters=[])
-
-def extract_query_intent(question: str) -> tuple[StructuredQuery, bool]:
-    """Tries LLM extraction, fallback to regex rules if it fails. Returns (StructuredQuery, used_llm)."""
-    result = extract_query_intent_llm(question)
-    if result is not None:
-        return result, True
-    return extract_query_intent_fallback(question), False
+def extract_query_intent(question: str) -> StructuredQuery:
+    """Translates a natural language query into a StructuredQuery using LLM."""
+    return extract_query_intent_llm(question)
 
 
-def format_answer_llm(question: str, calculation_result: Any) -> Optional[str]:
+def format_answer_llm(question: str, calculation_result: Any) -> str:
     """Asks the LLM to format a Pandas calculation result into a natural sounding answer."""
     if not client:
-        return None
+        raise RuntimeError("LLM client is not initialized because GROQ_API_KEY is missing from environment variables.")
     try:
         prompt = f"""You are the Natural Language response generator for a Support Ticket Analytics System.
 A user asked: "{question}"
@@ -222,27 +161,8 @@ Formulate a concise, clear, and direct response to the user's question using thi
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"LLM answer formatting failed: {e}")
-        return None
+        raise RuntimeError(f"LLM answer formatting failed: {str(e)}")
 
-def format_answer_fallback(question: str, calculation_result: Any) -> str:
-    """Fallback response formatter when LLM fails."""
-    # Simple formatting based on calculation result type
-    if isinstance(calculation_result, (int, float)):
-        return f"The calculated result for your query is {calculation_result}."
-    elif isinstance(calculation_result, list):
-        return f"Found {len(calculation_result)} matching records. Details: {calculation_result}"
-    elif isinstance(calculation_result, dict):
-        items = [f"{k}: {v}" for k, v in calculation_result.items()]
-        return f"Calculation results: {', '.join(items)}."
-    else:
-        return f"Based on the dataset, the result is: {calculation_result}"
-
-def format_answer(question: str, calculation_result: Any, skip_llm: bool = False) -> str:
-    """Tries LLM formatting, fallback to rule-based string if it fails or if skip_llm is True."""
-    if skip_llm:
-        return format_answer_fallback(question, calculation_result)
-    result = format_answer_llm(question, calculation_result)
-    if result is not None:
-        return result
-    return format_answer_fallback(question, calculation_result)
+def format_answer(question: str, calculation_result: Any) -> str:
+    """Formats the calculation result into a natural language response using LLM."""
+    return format_answer_llm(question, calculation_result)

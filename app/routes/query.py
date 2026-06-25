@@ -13,15 +13,15 @@ def query_tickets(request: Request, body: QuestionRequest):
         df = request.app.state.df
         
         # 1. Translate question to structured query representation
-        structured_query, used_llm = extract_query_intent(body.question)
-        print(f"Structured Query Extracted: {structured_query} (LLM Used: {used_llm})")
+        structured_query = extract_query_intent(body.question)
+        print(f"Structured Query Extracted: {structured_query}")
         
         # 2. Execute structured query on pandas DataFrame
         calculation_result = execute_query(df, structured_query)
         print(f"Pandas Calculation Result: {calculation_result}")
         
         # 3. Format the result back to natural language response
-        answer = format_answer(body.question, calculation_result, skip_llm=not used_llm)
+        answer = format_answer(body.question, calculation_result)
         
         return QueryResponse(answer=answer)
     except AttributeError:

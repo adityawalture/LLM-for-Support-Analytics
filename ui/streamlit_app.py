@@ -104,11 +104,15 @@ def post_nlp_query(question):
     try:
         r = requests.post(f"{API_BASE_URL}/query", json={"question": question})
         if r.status_code == 200:
-            return r.json().get("answer")
+            return r.json().get("answer"), None
         else:
-            return f"Error: API returned status code {r.status_code} ({r.text})"
+            try:
+                detail = r.json().get("detail", r.text)
+            except Exception:
+                detail = r.text
+            return None, f"API Error ({r.status_code}): {detail}"
     except Exception as e:
-        return f"Connection Error: Could not connect to API at {API_BASE_URL} ({str(e)})"
+        return None, f"Connection Error: Could not connect to API at {API_BASE_URL} ({str(e)})"
 
 # Helper function to retrieve anomalies
 def get_anomalies():
@@ -204,12 +208,16 @@ with col_query:
             st.error("Cannot query. The FastAPI backend is offline.")
         else:
             with st.spinner("Analyzing dataset & formulating answer..."):
-                answer = post_nlp_query(query_text)
+                answer, err = post_nlp_query(query_text)
                 
-            # Save to history
-            st.session_state.chat_history.append({"question": query_text, "answer": answer})
-            # Rerun to update state
-            st.rerun()
+            if err:
+                st.error(err)
+                st.toast("LLM Query Failed! Check backend status.", icon="🚨")
+            else:
+                # Save to history
+                st.session_state.chat_history.append({"question": query_text, "answer": answer})
+                # Rerun to update state
+                st.rerun()
 
 with col_anomaly:
     st.markdown("### ⚠️ Anomaly Dashboard")
